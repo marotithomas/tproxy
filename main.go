@@ -18,7 +18,8 @@ var (
 )
 
 func main() {
-	// Környezeti változók betöltése
+	log.Println("Starting proxy...")
+
 	authUser = os.Getenv("PROXY_USER")
 	authPass = os.Getenv("PROXY_PASS")
 	rawDomains := os.Getenv("ALLOWED_DOMAINS")
@@ -30,7 +31,6 @@ func main() {
 	allowedDomains = parseDomains(rawDomains)
 	log.Printf("Proxy started on %s | Allowed domains: %v", listenAddr, allowedDomains)
 
-	// HTTP szerver indítása
 	server := &http.Server{
 		Addr:    listenAddr,
 		Handler: http.HandlerFunc(handleRequest),
@@ -40,7 +40,6 @@ func main() {
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-	// Autentikáció
 	if !checkAuth(r) {
 		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
 		w.WriteHeader(http.StatusProxyAuthRequired)
@@ -49,14 +48,12 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Csak CONNECT metódust engedélyezünk
 	if r.Method != http.MethodConnect {
 		http.Error(w, "Only CONNECT method allowed", http.StatusMethodNotAllowed)
 		log.Printf(`{"event":"invalid_method","method":"%s","client":"%s"}`, r.Method, r.RemoteAddr)
 		return
 	}
 
-	// Domain ellenőrzés
 	host := r.Host
 	if !isAllowedDomain(host) {
 		http.Error(w, "Domain not allowed", http.StatusForbidden)
@@ -66,7 +63,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf(`{"event":"connect","client":"%s","target":"%s"}`, r.RemoteAddr, host)
 
-	// TCP kapcsolat a célhoz
 	destConn, err := net.Dial("tcp", host)
 	if err != nil {
 		http.Error(w, "Could not connect to destination", http.StatusServiceUnavailable)
@@ -75,7 +71,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer destConn.Close()
 
-	// Tunnel létrehozása
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
@@ -129,8 +124,3 @@ func parseDomains(raw string) []string {
 	for _, p := range parts {
 		d := strings.TrimSpace(p)
 		if d != "" {
-			cleaned = append(cleaned, strings.ToLower(d))
-		}
-	}
-	return cleaned
-}
