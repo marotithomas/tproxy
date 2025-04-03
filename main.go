@@ -11,14 +11,14 @@ import (
 )
 
 var (
-	listenAddr      = ":8080"
-	allowedDomains  []string
-	authUser        string
-	authPass        string
+	listenAddr     = ":8080"
+	allowedDomains []string
+	authUser       string
+	authPass       string
 )
 
 func main() {
-	// Konfiguráció betöltése környezeti változókból
+	// Környezeti változók betöltése
 	authUser = os.Getenv("PROXY_USER")
 	authPass = os.Getenv("PROXY_PASS")
 	rawDomains := os.Getenv("ALLOWED_DOMAINS")
@@ -28,7 +28,7 @@ func main() {
 	}
 
 	allowedDomains = parseDomains(rawDomains)
-	log.Printf("Allowed domains: %v", allowedDomains)
+	log.Printf("Proxy started on %s | Allowed domains: %v", listenAddr, allowedDomains)
 
 	// HTTP szerver indítása
 	server := &http.Server{
@@ -36,27 +36,27 @@ func main() {
 		Handler: http.HandlerFunc(handleRequest),
 	}
 
-	log.Println("Proxy listening on", listenAddr)
 	log.Fatal(server.ListenAndServe())
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Autentikáció
 	if !checkAuth(r) {
-		w.Header().Set("Proxy-Authenticate", "Basic realm=\"Restricted\"")
-		http.Error(w, "Proxy authentication required", http.StatusProxyAuthRequired)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
+		w.WriteHeader(http.StatusProxyAuthRequired)
+		w.Write([]byte("407 Proxy Authentication Required"))
 		log.Printf(`{"event":"auth_fail","client":"%s"}`, r.RemoteAddr)
 		return
 	}
 
-	// Csak CONNECT metódus engedélyezett
+	// Csak CONNECT metódust engedélyezünk
 	if r.Method != http.MethodConnect {
 		http.Error(w, "Only CONNECT method allowed", http.StatusMethodNotAllowed)
 		log.Printf(`{"event":"invalid_method","method":"%s","client":"%s"}`, r.Method, r.RemoteAddr)
 		return
 	}
 
-	// Cél domain ellenőrzése
+	// Domain ellenőrzés
 	host := r.Host
 	if !isAllowedDomain(host) {
 		http.Error(w, "Domain not allowed", http.StatusForbidden)
@@ -75,7 +75,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer destConn.Close()
 
-	// HTTP válasz a kliensnek
+	// Tunnel létrehozása
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
@@ -91,7 +91,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
-	// Adatforgalom továbbítása oda-vissza
 	go io.Copy(destConn, clientConn)
 	io.Copy(clientConn, destConn)
 }
