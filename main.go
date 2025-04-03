@@ -124,3 +124,8 @@ func parseDomains(raw string) []string {
 	for _, p := range parts {
 		d := strings.TrimSpace(p)
 		if d != "" {
+			cleaned = append(cleaned, strings.ToLower(d))
+		}
+	}
+	return cleaned
+}
